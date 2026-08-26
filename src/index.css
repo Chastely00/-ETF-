@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+:root {
+  --bg-color: #0a0a0a;           /* 主要背景：近黑炭灰色 */
+  --surface1-color: #1c1c1c;     /* 卡片等表層元素背景 */
+  --surface-dark: #0d0d0d;       /* 側欄/次底層背景 */
+  --text-color: #f0f0f0;         /* 主要文字：柔和灰白 */
+  --text-muted-color: #a0a0a0;   /* 次要資訊文字：淺灰 */
+  --accent1-color: #00f6ff;      /* 強調色：帶光暈感青色 */
+  --inflow-color: #00f6ff;       /* 淨申購（青色系） */
+  --outflow-color: #ff6b5b;      /* 淨贖回（珊瑚暖橘） */
+  --border-color: #242424;       /* 精緻暗色邊框 */
+  --border-subtle: #1c1c1c;      /* 極細暗色分隔線 */
+  --surface2-color: #242424;     /* 次級表層元素背景 */
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar for High Density Dark Mode */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f3f;
+}
+
+/* Glow effects and animation utilities */
+.glow-accent {
+  box-shadow: 0 0 16px rgba(0, 246, 255, 0.2);
+}
+
+.glow-inflow {
+  box-shadow: 0 0 12px rgba(0, 246, 255, 0.25);
+}
+
+.glow-outflow {
+  box-shadow: 0 0 12px rgba(255, 107, 91, 0.25);
+}

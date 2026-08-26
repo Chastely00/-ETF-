@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>台灣 ETF 申購/贖回金額即時估算與籌碼消長監控</title>
+    <meta
+      name="description"
+      content="依據台灣證券交易所 (TWSE) 與櫃買中心 (TPEx) 每日公開之 ETF 已發行受益權單位數與淨值 (NAV)，即時推算每日市場申購與贖回資金消長，提供專業圓餅圖與趨勢分析。"
+    />
+    
+    <!-- Open Graph (OG Tag) 社群分享卡片 -->
+    <meta property="og:title" content="台灣 ETF 申購/贖回金額即時估算與籌碼消長監控" />
+    <meta
+      property="og:description"
+      content="專業 ETF 籌碼資金流向儀表板：每日 07:00 排程自動更新、支援多區間歷史分析、分開計算申贖總量、視覺化圓餅圖與走勢圖。"
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Google tag (gtag.js) - Google Analytics 4 (GA4) -->
+    <!-- 請在正式發布時將 G-XXXXXXXXXX 替換為您的 GA4 評估 ID (Measurement ID) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-BXTHDRSY9Q', {
+        page_title: '台灣 ETF 申購贖回估算儀表板',
+        send_page_view: true
+      });
+    </script>
+  </head>
+  <body class="bg-[#0a0a0a] text-[#f0f0f0]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

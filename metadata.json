@@ -1,0 +1,6 @@
+{
+  "name": "台灣 ETF 申購贖回估算追蹤器",
+  "description": "彙整台灣上市與上櫃 ETF 每日申購/贖回單位數與估算資金流向、提供區間查詢、雙模式圓餅圖與分類群組分析",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
