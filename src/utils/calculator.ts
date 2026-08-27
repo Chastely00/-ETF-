@@ -12,6 +12,14 @@ import {
 } from '../data/timeSeriesData';
 
 /**
+ * daily_updater.ts 寫入的 estAmount 是「新台幣元」原始金額，
+ * 但本檔案內所有金額欄位（totalEstAmount、grossCreationAmount 等）
+ * 以及 formatAmount() 一律以「億元」為單位運作。
+ * 所有從 estAmount／unitDiff×NAV 換算金額的地方，都必須先除以這個常數。
+ */
+const YI_DIVISOR = 100_000_000; // 1 億 = 100,000,000 元
+
+/**
  * 依據海外投資標的開關篩選 ETF 列表
  */
 export function getFilteredEtfList(includeForeign: boolean): EtfMaster[] {
@@ -75,6 +83,8 @@ export function getPresetEtfCodes(
  * 修正說明：
  * 卡片總申購/總贖回為「分開計算 (Gross Calculation)」：
  * 將區間內所有申購日之金額與所有贖回日之金額各自累積，真實反映實際發生的申購總量與贖回總量。
+ * 金額欄位一律在此處換算為「億元」單位（原始 estAmount 為「元」），
+ * 後續所有讀取這些欄位的地方（含 formatAmount）都不需要再重複換算。
  */
 export function calculateRangeSummary(
   startDate: string,
@@ -119,28 +129,30 @@ export function calculateRangeSummary(
 
     // 計算區間累計：包含淨值、淨增減、以及「分開計算」之總申購與總贖回
     let totalUnitDiff = 0;
-    let totalEstAmount = 0;
-    let grossCreationAmount = 0;
-    let grossRedemptionAmount = 0;
+    let totalEstAmount = 0; // 億元
+    let grossCreationAmount = 0; // 億元
+    let grossRedemptionAmount = 0; // 億元
     let grossCreationUnits = 0;
     let grossRedemptionUnits = 0;
     let sumNav = 0;
 
     inRangeRecords.forEach((rec) => {
       totalUnitDiff += rec.unitDiff;
-      totalEstAmount += rec.estAmount;
+      // rec.estAmount 是原始「元」，換算成「億」後再累加
+      const estAmountInYi = rec.estAmount / YI_DIVISOR;
+      totalEstAmount += estAmountInYi;
       sumNav += rec.nav;
 
-      if (rec.estAmount > 0) {
-        grossCreationAmount += rec.estAmount;
+      if (estAmountInYi > 0) {
+        grossCreationAmount += estAmountInYi;
         grossCreationUnits += rec.unitDiff;
-      } else if (rec.estAmount < 0) {
-        grossRedemptionAmount += Math.abs(rec.estAmount);
+      } else if (estAmountInYi < 0) {
+        grossRedemptionAmount += Math.abs(estAmountInYi);
         grossRedemptionUnits += Math.abs(rec.unitDiff);
       }
     });
 
-    // 累計至全域總量 (分開計算)
+    // 累計至全域總量 (分開計算，單位：億元)
     totalGrossCreationAmount += grossCreationAmount;
     totalGrossRedemptionAmount += grossRedemptionAmount;
     totalGrossCreationUnits += grossCreationUnits;
@@ -188,7 +200,7 @@ export function calculateRangeSummary(
   // 依估算金額絕對值大小降冪排序
   items.sort((a, b) => Math.abs(b.totalEstAmount) - Math.abs(a.totalEstAmount));
 
-  // 淨金額為 (總申購 - 總贖回)
+  // 淨金額為 (總申購 - 總贖回)，單位：億元
   const netFlowAmount = +(totalGrossCreationAmount - totalGrossRedemptionAmount).toFixed(3);
   const netFlowUnits = totalGrossCreationUnits - totalGrossRedemptionUnits;
 
@@ -215,6 +227,8 @@ export function calculateRangeSummary(
 
 /**
  * 格式化金額 (億元 NT$ 或 萬元)
+ * 注意：呼叫端傳入的 amountInBillion 必須已經是「億元」單位
+ * （calculateRangeSummary / getDailyAggregateTrend 回傳的金額欄位皆已換算完成）。
  */
 export function formatAmount(
   amountInBillion: number,
@@ -261,6 +275,7 @@ export function formatUnits(
 
 /**
  * 產生每日加總時間序列數據 (用於趨勢長條圖，維持分開計算每日申購與贖回)
+ * 金額欄位同樣在此處換算為「億元」單位。
  */
 export function getDailyAggregateTrend(
   startDate: string,
@@ -285,8 +300,8 @@ export function getDailyAggregateTrend(
   );
 
   return validDates.map((date) => {
-    let creationAmount = 0;
-    let redemptionAmount = 0;
+    let creationAmount = 0; // 億元
+    let redemptionAmount = 0; // 億元
     let creationUnits = 0;
     let redemptionUnits = 0;
 
@@ -296,11 +311,13 @@ export function getDailyAggregateTrend(
       const rec = records.find((r) => r.date === date);
       if (!rec) return;
 
-      if (rec.estAmount > 0) {
-        creationAmount += rec.estAmount;
+      const estAmountInYi = rec.estAmount / YI_DIVISOR;
+
+      if (estAmountInYi > 0) {
+        creationAmount += estAmountInYi;
         creationUnits += rec.unitDiff;
-      } else if (rec.estAmount < 0) {
-        redemptionAmount += Math.abs(rec.estAmount);
+      } else if (estAmountInYi < 0) {
+        redemptionAmount += Math.abs(estAmountInYi);
         redemptionUnits += Math.abs(rec.unitDiff);
       }
     });
