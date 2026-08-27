@@ -69,41 +69,48 @@ export const EtfTable: React.FC<EtfTableProps> = ({
 
   const filteredItems = items.filter((item) => {
     // 類別過濾
-    if (categoryFilter !== 'all' && item.etf.category !== categoryFilter) {
+    if (categoryFilter !== 'all' && (item.etf.category || '其他') !== categoryFilter) {
       return false;
     }
     // 市場過濾 (TWSE / TPEx)
-    if (marketFilter !== 'all' && item.etf.market !== marketFilter) {
+    if (marketFilter !== 'all' && (item.etf.market || 'TWSE') !== marketFilter) {
       return false;
     }
     // 關鍵字過濾
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase().trim();
+      const code = (item.etf.code || '').toLowerCase();
+      const name = (item.etf.name || '').toLowerCase();
+      const fullName = (item.etf.fullName || '').toLowerCase();
+      const issuer = (item.etf.issuer || '').toLowerCase();
+      const trackingIndex = (item.etf.trackingIndex || '').toLowerCase();
+
       return (
-        item.etf.code.toLowerCase().includes(q) ||
-        item.etf.name.toLowerCase().includes(q) ||
-        item.etf.issuer.toLowerCase().includes(q) ||
-        item.etf.trackingIndex.toLowerCase().includes(q)
+        code.includes(q) ||
+        name.includes(q) ||
+        fullName.includes(q) ||
+        issuer.includes(q) ||
+        trackingIndex.includes(q)
       );
     }
     return true;
   });
 
   const sortedItems = [...filteredItems].sort((a, b) => {
-    let factor = sortDirection === 'asc' ? 1 : -1;
+    const factor = sortDirection === 'asc' ? 1 : -1;
     switch (sortField) {
       case 'estAmount':
-        return (a.totalEstAmount - b.totalEstAmount) * factor;
+        return ((a.totalEstAmount ?? 0) - (b.totalEstAmount ?? 0)) * factor;
       case 'unitDiff':
-        return (a.totalUnitDiff - b.totalUnitDiff) * factor;
+        return ((a.totalUnitDiff ?? 0) - (b.totalUnitDiff ?? 0)) * factor;
       case 'growthRate':
-        return (a.growthRate - b.growthRate) * factor;
+        return ((a.growthRate ?? 0) - (b.growthRate ?? 0)) * factor;
       case 'marketCap':
-        return (a.etf.marketCap - b.etf.marketCap) * factor;
+        return ((a.etf.marketCap ?? 0) - (b.etf.marketCap ?? 0)) * factor;
       case 'nav':
-        return (a.etf.currentNav - b.etf.currentNav) * factor;
+        return ((a.etf.currentNav ?? 0) - (b.etf.currentNav ?? 0)) * factor;
       case 'code':
-        return a.etf.code.localeCompare(b.etf.code) * factor;
+        return (a.etf.code || '').localeCompare(b.etf.code || '') * factor;
       default:
         return 0;
     }
@@ -320,7 +327,7 @@ export const EtfTable: React.FC<EtfTableProps> = ({
                         </button>
                       </div>
                       <div className="text-[11px] text-[#a0a0a0] line-clamp-1 mt-0.5">
-                        {item.etf.issuer} · 追蹤：{item.etf.trackingIndex}
+                        {item.etf.issuer || '其他投信'} · 追蹤：{item.etf.trackingIndex || '無特定追蹤指數'}
                       </div>
                     </td>
 
@@ -328,16 +335,16 @@ export const EtfTable: React.FC<EtfTableProps> = ({
                     <td className="p-3 hidden sm:table-cell">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="rounded bg-[#242424] px-1.5 py-0.5 text-[10px] font-medium text-[#a0a0a0] border border-[#333333]">
-                          {item.etf.category}
+                          {item.etf.category || '其他'}
                         </span>
                         <span
                           className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                            item.etf.market === 'TWSE'
+                            (item.etf.market || 'TWSE') === 'TWSE'
                               ? 'bg-blue-950/50 text-blue-300 border border-blue-800/40'
                               : 'bg-purple-950/50 text-purple-300 border border-purple-800/40'
                           }`}
                         >
-                          {item.etf.market === 'TWSE' ? '上市' : '上櫃'}
+                          {(item.etf.market || 'TWSE') === 'TWSE' ? '上市' : '上櫃'}
                         </span>
                         {item.etf.hasForeignHolding && (
                           <span
@@ -414,16 +421,16 @@ export const EtfTable: React.FC<EtfTableProps> = ({
                     {/* Current NAV & Price */}
                     <td className="p-3 text-right hidden lg:table-cell font-mono">
                       <div className="font-medium text-[#f0f0f0]">
-                        NT$ {item.etf.currentNav.toFixed(2)}
+                        NT$ {(item.etf.currentNav ?? 0).toFixed(2)}
                       </div>
                       <div className="text-[10px] text-[#a0a0a0]">
-                        市價 {item.etf.currentPrice.toFixed(2)}
+                        市價 {(item.etf.currentPrice ?? 0).toFixed(2)}
                       </div>
                     </td>
 
                     {/* Market Cap (億元) */}
                     <td className="p-3 text-right hidden xl:table-cell font-mono text-[#a0a0a0]">
-                      {item.etf.marketCap.toLocaleString()} 億
+                      {(item.etf.marketCap ?? 0).toLocaleString()} 億
                     </td>
 
                     {/* Action: Inspect Details */}
