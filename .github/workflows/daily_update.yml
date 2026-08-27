@@ -29,6 +29,8 @@ jobs:
 
       - name: Run daily ETF data sync script
         run: npx tsx scripts/daily_updater.ts
+        env:
+          FIN_DATA_API_KEY: ${{ secrets.FIN_DATA_API_KEY }}
 
       - name: Commit and push if data updated
         run: |
