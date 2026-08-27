@@ -120,7 +120,7 @@ export const WcagAuditModal: React.FC<WcagAuditModalProps> = ({
                   系統架構、排程與 WCAG 檢測
                 </h3>
                 <p className="text-xs text-[#a0a0a0]">
-                  ETF 申贖籌碼即時運算 · 07:00 自動更新 · 正式發布手冊
+                  ETF 申贖籌碼即時運算 · 07:03 自動更新 · 正式發布手冊
                 </p>
               </div>
             </div>
@@ -158,7 +158,7 @@ export const WcagAuditModal: React.FC<WcagAuditModalProps> = ({
               }`}
             >
               <Rocket className="h-3.5 w-3.5" />
-              07:00 排程與正式發布指南
+              07:03 排程與正式發布指南
             </button>
           </div>
         </div>
@@ -246,14 +246,14 @@ export const WcagAuditModal: React.FC<WcagAuditModalProps> = ({
             </>
           ) : (
             <>
-              {/* Daily 07:00 AM Cron Architecture */}
+              {/* Daily 07:03 AM Cron Architecture */}
               <div className="rounded-xl bg-[#0a0a0a] p-4 border border-[#242424] space-y-3">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#00f6ff]">
                   <Clock className="h-4 w-4" />
-                  1. 每日早上 07:00 自動更新排程架構
+                  1. 每日早上 07:03 自動更新排程架構
                 </div>
                 <p className="text-xs text-[#a0a0a0] leading-relaxed">
-                  台灣各投信每日約於 18:00 ~ 21:00 公布當日最新淨值與已發行受益權單位。設定每日 07:00 (開盤前) 自動執行排程，可確保開盤時投資人獲得最完整之 T+1 籌碼數據：
+                  台灣各投信每日約於 18:00 ~ 21:00 公布當日最新淨值與已發行受益權單位。設定每日 07:03 (開盤前) 自動執行排程，可確保開盤時投資人獲得最完整之 T+1 籌碼數據：
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   <div className="p-3 rounded-lg bg-[#141414] border border-[#242424] space-y-1">
@@ -262,7 +262,7 @@ export const WcagAuditModal: React.FC<WcagAuditModalProps> = ({
                       自動化工作流 (GitHub Actions)
                     </span>
                     <p className="text-[11px] text-[#a0a0a0]">
-                      專案已內建 <code className="text-[#00f6ff]">.github/workflows/daily_update.yml</code>，於每日 UTC 23:00 (台北 07:00) 自動觸發執行。
+                      專案已內建 <code className="text-[#00f6ff]">.github/workflows/daily_update.yml</code>，於每日 UTC 23:03 (台北 07:03) 自動觸發執行。
                     </p>
                   </div>
                   <div className="p-3 rounded-lg bg-[#141414] border border-[#242424] space-y-1">
