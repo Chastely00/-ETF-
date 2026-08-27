@@ -2,18 +2,21 @@
  * 一次性歷史資料匯入腳本 (One-off Historical Data Import Script)
  *
  * 用途：
- *   將從 CMoney 匯出、經轉換的歷史「已發行受益權單位數」資料
+ *   將從 CMoney 匯出、經轉換的歷史「已發行受益權單位數」與「淨值」資料
  *   (compactRecords_historical.json，涵蓋 2005-01-03 ~ 資料匯出當日)
  *   安全併入正式的 src/data/compactRecords.json。
  *
- * 重要原則：
- * 1. 【現有資料優先】只要某個日期在正式檔案裡已經存在，一律保留現有內容，
- *    絕不用歷史檔案覆蓋——因為 daily_updater.ts 抓到的即時資料含有真實
- *    淨值/收盤價，歷史檔案該欄位是 0，覆蓋會讓資料變差。
- * 2. 只補「正式檔案裡完全沒有的日期」。
- * 3. 寫檔沿用 daily_updater.ts 的安全寫入模式：先寫暫存檔、重新讀回驗證
+ * 重要原則（v2 修正版）：
+ * 1. 【用「是否有真實收盤價」判斷資料來源，而非單純看日期是否存在】
+ *    daily_updater.ts 每日排程寫入的資料一定帶有真實收盤價（closePrice > 0）；
+ *    歷史匯入的資料因為來源檔案沒有收盤價，一律是 0。
+ *    因此：現有紀錄 closePrice > 0 -> 視為真實即時資料，保護不覆蓋。
+ *          現有紀錄 closePrice === 0 -> 視為先前歷史匯入的資料（可能待修正），
+ *                                      這次匯入可以覆蓋更新。
+ *    這避免了「重跑修正版歷史檔案時，被自己上一次的舊版匯入結果擋住」的問題。
+ * 2. 寫檔沿用 daily_updater.ts 的安全寫入模式：先寫暫存檔、重新讀回驗證
  *    為合法 JSON 才覆蓋正式檔案。
- * 4. 這是「跑一次就好」的匯入腳本，不掛進每日排程；跑完確認無誤後，
+ * 3. 這是「跑一次就好」的匯入腳本，不掛進每日排程；跑完確認無誤後，
  *    建議把 compactRecords_historical.json 從 repo 移除，避免混淆。
  *
  * 使用方式：
@@ -84,7 +87,8 @@ function main() {
   }
 
   let totalAdded = 0;
-  let totalSkippedExisting = 0;
+  let totalOverwritten = 0;
+  let totalSkippedRealData = 0;
   let newCodeCount = 0;
 
   for (const code of Object.keys(historicalData)) {
@@ -95,20 +99,29 @@ function main() {
       newCodeCount++;
     }
 
-    // 用 Map 以日期為 key，現有資料先放入（優先權最高）
+    // 用 Map 以日期為 key，先放入現有資料
     const recordMap = new Map<string, RawCompactRecord>(
       existingRecords.map((r) => [r[0], r])
     );
 
     for (const rec of historicalRecords) {
       const date = rec[0];
-      if (recordMap.has(date)) {
-        // 該日期已有現有資料（通常含真實淨值），不覆蓋
-        totalSkippedExisting++;
-        continue;
+      const existing = recordMap.get(date);
+
+      if (existing) {
+        const existingClosePrice = existing[3];
+        if (existingClosePrice > 0) {
+          // 現有資料有真實收盤價 -> 判定為排程即時抓到的資料，保護不覆蓋
+          totalSkippedRealData++;
+          continue;
+        }
+        // 現有資料收盤價是 0 -> 判定為先前歷史匯入的舊資料，允許覆蓋更新
+        recordMap.set(date, rec);
+        totalOverwritten++;
+      } else {
+        recordMap.set(date, rec);
+        totalAdded++;
       }
-      recordMap.set(date, rec);
-      totalAdded++;
     }
 
     existingData[code] = Array.from(recordMap.values()).sort((a, b) =>
@@ -125,8 +138,9 @@ function main() {
 
   console.log('================================================================');
   console.log(`✅ 匯入完成！`);
-  console.log(`   新增歷史資料點：${totalAdded} 筆`);
-  console.log(`   已存在、跳過不覆蓋：${totalSkippedExisting} 筆`);
+  console.log(`   新增歷史資料點（原本不存在）：${totalAdded} 筆`);
+  console.log(`   覆蓋更新資料點（修正舊版歷史匯入）：${totalOverwritten} 筆`);
+  console.log(`   跳過保護（現有為真實即時資料）：${totalSkippedRealData} 筆`);
   console.log(`   本次新增的 ETF 代號數：${newCodeCount} 檔`);
   console.log(`💾 已寫入: ${seriesPath}`);
   console.log('================================================================');
