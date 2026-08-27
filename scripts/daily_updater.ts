@@ -106,6 +106,12 @@ const REFERER =
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// 股票分割（含反分割）偵測參數：
+// 單位數倍率跟「前日淨值/今日淨值」倒數倍率互相吻合，視為同一次分割事件，
+// 而不是真實申購/贖回（否則分割日會因單位數暴增，被誤判成天量申購/贖回）。
+const SPLIT_RATIO_TOLERANCE = 0.05; // 兩個倍率之間允許 5% 誤差
+const MIN_UNIT_JUMP_RATIO = 1.3; // 單位數變動須超過 30% 才進入分割檢查，排除一般正常申贖
+
 // ============ 工具函式 ============
 
 /**
@@ -308,6 +314,7 @@ async function main() {
   let newCodeCount = 0;
   const newCodesFound: string[] = [];
   const foreignFlagMismatches: string[] = [];
+  const splitEventsDetected: string[] = [];
 
   for (const rec of etfRecords) {
     const existingRecords = timeSeries[rec.code] || [];
@@ -315,13 +322,48 @@ async function main() {
       existingRecords.map((r) => [r[0], r])
     );
 
+    // 找出「今天之前最近一筆」既有紀錄，用來偵測股票分割
+    // （用 < rec.date 而非直接取索引 0，避免同一天重跑時抓到自己）
+    const prevRecord = existingRecords
+      .filter((r) => r[0] < rec.date)
+      .sort((a, b) => b[0].localeCompare(a[0]))[0];
+
+    let finalUnitDiff = rec.unitDiff;
+    let finalEstAmount = rec.estAmount;
+
+    if (prevRecord) {
+      const prevUnits = prevRecord[1];
+      const prevNav = prevRecord[2];
+      if (
+        prevUnits > 0 &&
+        prevNav > 0 &&
+        rec.nav > 0 &&
+        Math.abs(rec.outstandingUnits / prevUnits) >= MIN_UNIT_JUMP_RATIO
+      ) {
+        const unitRatio = rec.outstandingUnits / prevUnits;
+        const navRatio = prevNav / rec.nav;
+        if (navRatio > 0) {
+          const diffPct = Math.abs(unitRatio - navRatio) / navRatio;
+          if (diffPct <= SPLIT_RATIO_TOLERANCE) {
+            // 單位數倍率跟淨值倒數倍率吻合 → 判定為股票分割，非真實申贖
+            finalUnitDiff = 0;
+            finalEstAmount = 0;
+            splitEventsDetected.push(
+              `${rec.code} ${rec.name}：${prevRecord[0]} -> ${rec.date}，` +
+                `單位數 x${unitRatio.toFixed(2)}（淨值 ${prevNav} -> ${rec.nav}），已將當日單位差歸零`
+            );
+          }
+        }
+      }
+    }
+
     recordMap.set(rec.date, [
       rec.date,
       rec.outstandingUnits,
       rec.nav,
       rec.price,
-      rec.unitDiff,
-      rec.estAmount,
+      finalUnitDiff,
+      finalEstAmount,
     ]);
 
     timeSeries[rec.code] = Array.from(recordMap.values()).sort((a, b) =>
@@ -385,6 +427,12 @@ async function main() {
       `⚠️ 發現 ${foreignFlagMismatches.length} 檔海內外分類與今日自動判斷不一致，請人工複核：`
     );
     foreignFlagMismatches.forEach((line) => console.log(`   - ${line}`));
+  }
+  if (splitEventsDetected.length > 0) {
+    console.log(
+      `✂️ 偵測到 ${splitEventsDetected.length} 起疑似股票分割事件，已自動歸零當日單位差：`
+    );
+    splitEventsDetected.forEach((line) => console.log(`   - ${line}`));
   }
   console.log(`💾 資料已寫入:`);
   console.log(`   - ${seriesPath}`);
