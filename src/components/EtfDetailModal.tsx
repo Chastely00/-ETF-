@@ -63,15 +63,15 @@ export const EtfDetailModal: React.FC<EtfDetailModalProps> = ({
                   {etf.name}
                 </h3>
                 <span className="rounded bg-[#242424] px-2 py-0.5 text-xs text-[#a0a0a0]">
-                  {etf.category}
+                  {etf.category || '其他'}
                 </span>
                 <span className="rounded bg-[#00f6ff]/10 px-2 py-0.5 text-xs text-[#00f6ff] border border-[#00f6ff]/20">
-                  {etf.market}
+                  {etf.market || 'TWSE'}
                 </span>
               </div>
               <p className="text-xs text-[#a0a0a0] mt-0.5">
-                {etf.fullName} · 發行商：{etf.issuer} · 配息頻率：
-                {etf.dividendFrequency} · 總經理費用：{etf.expenseRatio}%
+                {etf.fullName || etf.name} · 發行商：{etf.issuer || '其他投信'} · 配息頻率：
+                {etf.dividendFrequency || '不配息'} · 總經理費用：{etf.expenseRatio ?? 0}%
               </p>
             </div>
           </div>
@@ -123,14 +123,13 @@ export const EtfDetailModal: React.FC<EtfDetailModalProps> = ({
             <div className="rounded-xl bg-[#0a0a0a] p-3.5 border border-[#2a2a2a]">
               <span className="text-xs text-[#a0a0a0]">最新淨值 / 市價</span>
               <div className="text-xl font-bold font-mono text-[#f0f0f0] mt-1">
-                NT$ {etf.currentNav.toFixed(2)}
+                NT$ {(etf.currentNav ?? 0).toFixed(2)}
               </div>
               <span className="text-[10px] text-[#a0a0a0]">
-                市價 NT$ {etf.currentPrice.toFixed(2)} (折溢價{' '}
-                {(
-                  ((etf.currentPrice - etf.currentNav) / etf.currentNav) *
-                  100
-                ).toFixed(2)}
+                市價 NT$ {(etf.currentPrice ?? 0).toFixed(2)} (折溢價{' '}
+                {etf.currentNav && etf.currentPrice
+                  ? (((etf.currentPrice - etf.currentNav) / etf.currentNav) * 100).toFixed(2)
+                  : '0.00'}
                 %)
               </span>
             </div>
@@ -138,10 +137,10 @@ export const EtfDetailModal: React.FC<EtfDetailModalProps> = ({
             <div className="rounded-xl bg-[#0a0a0a] p-3.5 border border-[#2a2a2a]">
               <span className="text-xs text-[#a0a0a0]">目前總已發行規模</span>
               <div className="text-xl font-bold font-mono text-[#f0f0f0] mt-1">
-                {etf.marketCap} 億元
+                {(etf.marketCap ?? 0).toLocaleString()} 億元
               </div>
               <span className="text-[10px] text-[#a0a0a0]">
-                已發行 {formatUnits(etf.currentUnits, false)}
+                已發行 {formatUnits(etf.currentUnits ?? 0, false)}
               </span>
             </div>
           </div>
