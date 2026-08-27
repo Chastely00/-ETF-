@@ -183,21 +183,25 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
 
   const renderActiveShape = (props: any) => {
     const {
-      cx,
-      cy,
-      innerRadius,
-      outerRadius,
-      startAngle,
-      endAngle,
-      fill,
-    } = props;
+      cx = 0,
+      cy = 0,
+      innerRadius = 0,
+      outerRadius = 0,
+      startAngle = 0,
+      endAngle = 0,
+      fill = '#00f6ff',
+    } = props || {};
+
+    if (isNaN(cx) || isNaN(cy) || isNaN(innerRadius) || isNaN(outerRadius)) {
+      return null;
+    }
 
     return (
       <g>
         <Sector
           cx={cx}
           cy={cy}
-          innerRadius={innerRadius - 2}
+          innerRadius={Math.max(0, innerRadius - 2)}
           outerRadius={outerRadius + 6}
           startAngle={startAngle}
           endAngle={endAngle}
@@ -291,7 +295,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                   cy="50%"
                   innerRadius={65}
                   outerRadius={105}
-                  paddingAngle={2}
+                  paddingAngle={mergedChartData.length > 20 ? 0 : mergedChartData.length > 10 ? 1 : 2}
                   dataKey="amount"
                   onMouseEnter={(_, index) => setActiveIndexMerged(index)}
                   onMouseLeave={() => setActiveIndexMerged(null)}
@@ -442,7 +446,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                       cy="50%"
                       innerRadius={45}
                       outerRadius={80}
-                      paddingAngle={2}
+                      paddingAngle={creationChartData.length > 20 ? 0 : creationChartData.length > 10 ? 1 : 2}
                       dataKey="amount"
                       onMouseEnter={(_, index) => setActiveIndexCreation(index)}
                       onMouseLeave={() => setActiveIndexCreation(null)}
@@ -531,7 +535,7 @@ export const PieChartSection: React.FC<PieChartSectionProps> = ({
                       cy="50%"
                       innerRadius={45}
                       outerRadius={80}
-                      paddingAngle={2}
+                      paddingAngle={redemptionChartData.length > 20 ? 0 : redemptionChartData.length > 10 ? 1 : 2}
                       dataKey="amount"
                       onMouseEnter={(_, index) => setActiveIndexRedemption(index)}
                       onMouseLeave={() => setActiveIndexRedemption(null)}
