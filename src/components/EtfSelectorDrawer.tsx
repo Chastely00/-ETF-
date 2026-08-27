@@ -45,22 +45,35 @@ export const EtfSelectorDrawer: React.FC<EtfSelectorDrawerProps> = ({
     '主題/產業型',
   ];
 
-  // 取得投信發行商列表
+  // 取得投信發行商列表 (過濾掉 undefined/null)
   const issuers = [
     'all',
-    ...Array.from(new Set(allEtfs.map((e) => e.issuer))),
+    ...Array.from(
+      new Set(
+        allEtfs
+          .map((e) => e.issuer)
+          .filter((iss): iss is string => Boolean(iss && iss.trim()))
+      )
+    ),
   ];
 
   const filteredEtfs = allEtfs.filter((etf) => {
-    if (selectedCat !== 'all' && etf.category !== selectedCat) return false;
-    if (selectedIssuer !== 'all' && etf.issuer !== selectedIssuer) return false;
+    if (selectedCat !== 'all' && (etf.category || '其他') !== selectedCat) return false;
+    if (selectedIssuer !== 'all' && (etf.issuer || '其他投信') !== selectedIssuer) return false;
     if (search.trim()) {
-      const q = search.toLowerCase();
+      const q = search.toLowerCase().trim();
+      const code = (etf.code || '').toLowerCase();
+      const name = (etf.name || '').toLowerCase();
+      const fullName = (etf.fullName || '').toLowerCase();
+      const trackingIndex = (etf.trackingIndex || '').toLowerCase();
+      const issuer = (etf.issuer || '').toLowerCase();
+
       return (
-        etf.code.toLowerCase().includes(q) ||
-        etf.name.toLowerCase().includes(q) ||
-        etf.fullName.toLowerCase().includes(q) ||
-        etf.trackingIndex.toLowerCase().includes(q)
+        code.includes(q) ||
+        name.includes(q) ||
+        fullName.includes(q) ||
+        issuer.includes(q) ||
+        trackingIndex.includes(q)
       );
     }
     return true;
@@ -226,27 +239,27 @@ export const EtfSelectorDrawer: React.FC<EtfSelectorDrawerProps> = ({
                           </span>
                         </div>
                         <div className="flex items-center gap-1.5 text-[10px] text-[#a0a0a0] mt-0.5">
-                          <span>{etf.category}</span>
+                          <span>{etf.category || '其他'}</span>
                           <span>·</span>
-                          <span>{etf.issuer}</span>
+                          <span>{etf.issuer || '其他投信'}</span>
                           <span>·</span>
-                          <span>規模 {etf.marketCap}億</span>
+                          <span>規模 {(etf.marketCap ?? 0).toLocaleString()}億</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex flex-col items-end flex-shrink-0 text-right">
                       <span className="text-[11px] font-mono text-[#f0f0f0]">
-                        NT$ {etf.currentNav.toFixed(2)}
+                        NT$ {(etf.currentNav ?? 0).toFixed(2)}
                       </span>
                       <span
                         className={`text-[9px] px-1 rounded ${
-                          etf.market === 'TWSE'
+                          (etf.market || 'TWSE') === 'TWSE'
                             ? 'text-blue-400 bg-blue-950/40'
                             : 'text-purple-400 bg-purple-950/40'
                         }`}
                       >
-                        {etf.market}
+                        {etf.market || 'TWSE'}
                       </span>
                     </div>
                   </div>
