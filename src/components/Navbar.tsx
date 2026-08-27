@@ -58,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="text-[10px] text-[#555555] hidden sm:inline">·</span>
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-[#00f6ff]/90 bg-[#0a0a0a] px-1.5 py-0.5 rounded border border-[#242424]">
                     <span className="h-1 w-1 rounded-full bg-[#00f6ff]"></span>
-                    每日 07:00 自動排程更新
+                    每日 07:03 自動排程更新
                   </span>
                 </div>
               </div>
