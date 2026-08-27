@@ -1,97 +1,270 @@
 /**
- * 每日 ETF 申購/贖回籌碼真實資料更新腳本 (Daily Real ETF Flow Sync Script)
- * 
- * 策略特色：
- * 1. 支援一次性批量抓取（避免個別 ETF 頻繁請求觸發 Rate Limit）
- * 2. 多重官方公開數據來源（TWSE OpenAPI + TPEx OpenAPI + Yahoo Finance + FinMind 備援）
- * 3. 確保 GitHub Actions 100% 穩定產出真實數據
+ * 每日 ETF 申購/贖回真實籌碼同步腳本 (Daily Real ETF Creation/Redemption Sync Script)
+ *
+ * 資料來源：
+ *   TWSE「ETF申贖資訊及即時淨值揭露專區」彙總 API
+ *   https://mis.twse.com.tw/stock/data/all_etf.txt
+ *
+ * 此 API 由 TWSE 彙整全體投信公司各自申報的即時 ETF 資訊，欄位定義依官方
+ * 《ETF 申贖資訊及即時淨值揭露專區 介接格式說明》：
+ *   a: ETF代號
+ *   b: ETF名稱
+ *   c: 已發行受益權單位數
+ *   d: 與前日已發行受益單位差異數（今日單位數-前日單位數；正值=淨申購，負值=淨贖回）
+ *   e: 成交價
+ *   f: 投信或總代理人預估淨值
+ *   g: 預估折溢價幅度
+ *   h: 前一營業日淨值
+ *   i: 資料日期 (YYYYMMDD)
+ *   j: 資料時間 (HH24:MI:SS)
+ *   k: 標的指數或商品類型（"1"=國內成分證券ETF，其餘各值代表含海外成分，
+ *      但各投信對非 1 的細分定義不一致，僅可用於「是否含海外標的」的二元判斷）
+ *
+ * 重要注意事項（吸取先前資料損毀的教訓）：
+ * 1. 不同投信回傳的數字型態不一致（有些是 number，有些是帶千分位逗號的字串，
+ *    例如 "119,605,000"；「前一營業日淨值」淨值未結出時可能是文字 "未結出"），
+ *    所有數值一律經過 parseNumericField() 正規化，絕不直接假設型態。
+ * 2. 拿到回應後一律先 JSON.parse 驗證成功，才進入解析流程；parse 失敗就整批放棄、
+ *    絕不把原始回應內容（可能是壓縮過的二進位資料或錯誤頁面）寫入最終檔案。
+ * 3. 每一筆 ETF 資料獨立處理，單筆欄位異常只跳過該筆並記錄，不影響其他資料。
+ * 4. 寫檔一律先寫暫存檔、重新讀回驗證為合法 JSON 後才覆蓋正式檔案，任何一步
+ *    失敗都不會動到既有正式檔案的內容。
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 
+// ============ 型別定義 ============
+
 interface EtfMasterItem {
   code: string;
   name: string;
-  fullName: string;
-  issuer: string;
-  market: 'TWSE' | 'TPEx';
-  category: string;
+  fullName?: string;
+  issuer?: string;
+  market?: 'TWSE' | 'TPEx';
+  category?: string;
   hasForeignHolding: boolean;
-  trackingIndex: string;
-  marketCap: number;
-  listedDate: string;
-  expenseRatio: number;
-  dividendFrequency: string;
-  currentNav: number;
-  currentPrice: number;
-  currentUnits: number;
+  trackingIndex?: string;
+  marketCap?: number;
+  listedDate?: string;
+  expenseRatio?: number;
+  dividendFrequency?: string;
+  currentNav?: number;
+  currentPrice?: number;
+  currentUnits?: number;
 }
 
 // 緊湊格式: [date, outstandingUnits, nav, closePrice, unitDiff, estAmount]
 type RawCompactRecord = [string, number, number, number, number, number];
 
+interface RawEtfEntry {
+  a: unknown;
+  b: unknown;
+  c: unknown;
+  d: unknown;
+  e: unknown;
+  f: unknown;
+  g: unknown;
+  h: unknown;
+  i: unknown;
+  j: unknown;
+  k: unknown;
+}
+
+interface EtfGroupResponse {
+  msgArray?: RawEtfEntry[];
+  refURL?: string;
+  userDelay?: unknown;
+  rtMessage?: string;
+  rtCode?: string;
+}
+
+interface AllEtfResponse {
+  a1?: EtfGroupResponse[];
+}
+
+interface ParsedEtfRecord {
+  code: string;
+  name: string;
+  outstandingUnits: number;
+  unitDiff: number;
+  price: number;
+  nav: number;
+  prevNav: number;
+  date: string; // YYYY-MM-DD
+  time: string;
+  productType: string; // 原始 k 值
+  hasForeignHolding: boolean;
+  estAmount: number;
+}
+
+// ============ 常數 ============
+
+const SOURCE_URL = 'https://mis.twse.com.tw/stock/data/all_etf.txt';
+const REFERER =
+  'https://mis.twse.com.tw/stock/various-areas/etf-price/indicator-disclosure-etf?lang=zhHant';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// ============ 工具函式 ============
+
 /**
- * 透過 Yahoo Finance 公開 API 抓取特定股票/ETF 最新價格與歷史
+ * 正規化各投信不一致的數字欄位：
+ * - 可能是 number、字串數字、或帶千分位逗號的字串（如 "119,605,000"）
+ * - 可能是 "未結出" 等非數字文字（前一營業日淨值尚未公告時）
+ * 一律回傳 number，無法解析則回傳 NaN，呼叫端須自行檢查。
  */
-async function fetchYahooQuote(code: string, market: string): Promise<{ date: string; close: number } | null> {
-  const symbol = market === 'TWSE' ? `${code}.TW` : `${code}.TWO`;
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`;
+function parseNumericField(value: unknown): number {
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const cleaned = value.replace(/,/g, '').trim();
+    if (cleaned === '' || cleaned === '未結出') return NaN;
+    const n = Number(cleaned);
+    return n;
+  }
+  return NaN;
+}
 
+/** "20260827" -> "2026-08-27"；格式不符回傳 null */
+function formatDate(raw: unknown): string | null {
+  if (typeof raw !== 'string' || !/^\d{8}$/.test(raw)) return null;
+  return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+}
+
+/**
+ * 解析單一 ETF 原始資料，任何必要欄位異常則回傳 null（呼叫端負責記錄並跳過）。
+ * 絕不拋出例外中斷整批處理。
+ */
+function parseEtfEntry(raw: RawEtfEntry): ParsedEtfRecord | null {
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        Accept: 'application/json',
-      },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
+    const code = typeof raw.a === 'string' ? raw.a.trim() : '';
+    const name = typeof raw.b === 'string' ? raw.b.trim() : '';
+    if (!code || !name) return null;
 
-    const timestamps = result.timestamp || [];
-    const quotes = result.indicators?.quote?.[0]?.close || [];
-    if (timestamps.length === 0 || quotes.length === 0) return null;
+    const outstandingUnits = parseNumericField(raw.c);
+    const unitDiff = parseNumericField(raw.d);
+    const price = parseNumericField(raw.e);
+    const nav = parseNumericField(raw.f);
+    const prevNav = parseNumericField(raw.h);
+    const date = formatDate(raw.i);
+    const time = typeof raw.j === 'string' ? raw.j : '';
+    const productType = typeof raw.k === 'string' ? raw.k : String(raw.k ?? '');
 
-    const lastIdx = timestamps.length - 1;
-    const ts = timestamps[lastIdx];
-    const close = quotes[lastIdx];
-    if (!ts || close == null) return null;
+    // 必要欄位缺一不可：沒有日期、單位數或差異數，這筆資料就沒有意義
+    if (!date || Number.isNaN(outstandingUnits) || Number.isNaN(unitDiff)) {
+      return null;
+    }
 
-    const d = new Date(ts * 1000);
-    const dateStr = d.toISOString().slice(0, 10);
-    return { date: dateStr, close: +close.toFixed(2) };
+    // 估算申贖金額：優先用投信預估淨值，缺值時退而求其次用成交價
+    const navForCalc = !Number.isNaN(nav) && nav > 0 ? nav : price;
+    const estAmount = !Number.isNaN(navForCalc)
+      ? Math.round(unitDiff * navForCalc)
+      : 0;
+
+    return {
+      code,
+      name,
+      outstandingUnits,
+      unitDiff,
+      price: Number.isNaN(price) ? 0 : price,
+      nav: Number.isNaN(nav) ? 0 : nav,
+      prevNav: Number.isNaN(prevNav) ? 0 : prevNav,
+      date,
+      time,
+      productType,
+      // 依約定：k = "1" 代表純國內成分，其餘一律視為含海外標的
+      hasForeignHolding: productType !== '1',
+      estAmount,
+    };
   } catch {
     return null;
   }
 }
 
 /**
- * 透過 TWSE 官方全市場收盤行情 OpenAPI 批量抓取今日所有台股收盤價
+ * 抓取並解析 TWSE ETF 申贖/淨值揭露彙總資料。
+ * 任何層級失敗都回傳空陣列並印出警告，讓呼叫端可以安全地
+ * 「這次沒抓到就跳過，不動既有檔案」，而不是寫入壞資料。
  */
-async function fetchTwseAllQuotes(): Promise<Map<string, number>> {
-  const quoteMap = new Map<string, number>();
+async function fetchAllEtfData(): Promise<ParsedEtfRecord[]> {
+  const url = `${SOURCE_URL}?_=${Date.now()}`;
+
+  let rawText: string;
   try {
-    const res = await fetch('https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL', {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        Referer: REFERER,
+        Accept: 'application/json, text/plain, */*',
+      },
     });
-    if (res.ok) {
-      const list: any[] = await res.json();
-      list.forEach((item) => {
-        const code = item.Code;
-        const close = parseFloat(item.ClosingPrice);
-        if (code && !isNaN(close)) {
-          quoteMap.set(code, close);
-        }
-      });
-      console.log(`📡 成功取得 TWSE 官方全市場即時報價，共 ${quoteMap.size} 檔標的。`);
+    if (!res.ok) {
+      console.error(`❌ TWSE ETF 資料來源回應非 200：HTTP ${res.status}`);
+      return [];
     }
+    rawText = await res.text();
   } catch (e: any) {
-    console.log(`⚠️ TWSE OpenAPI 連線提示: ${e.message}`);
+    console.error(`❌ 連線 TWSE ETF 資料來源失敗：${e.message}`);
+    return [];
   }
-  return quoteMap;
+
+  let parsed: AllEtfResponse;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (e: any) {
+    // 這正是先前資料損毀的成因：回應不是合法 JSON 時絕不寫檔，只記錄並中止本次抓取
+    console.error(`❌ TWSE ETF 資料來源回應不是合法 JSON，本次抓取放棄：${e.message}`);
+    return [];
+  }
+
+  if (!parsed || !Array.isArray(parsed.a1)) {
+    console.error('❌ TWSE ETF 資料來源回應結構異常（找不到 a1 陣列），本次抓取放棄');
+    return [];
+  }
+
+  const records: ParsedEtfRecord[] = [];
+  let skippedCount = 0;
+
+  for (const group of parsed.a1) {
+    if (!group || !Array.isArray(group.msgArray)) continue; // 忽略空群組（如回應尾端的 {}）
+    for (const entry of group.msgArray) {
+      const parsedEntry = parseEtfEntry(entry);
+      if (parsedEntry) {
+        records.push(parsedEntry);
+      } else {
+        skippedCount++;
+      }
+    }
+  }
+
+  console.log(
+    `📡 成功解析 TWSE ETF 資料 ${records.length} 筆（跳過異常資料 ${skippedCount} 筆）`
+  );
+  return records;
 }
+
+// ============ 安全寫檔 ============
+
+/**
+ * 先寫入暫存檔，重新讀取並驗證能被 JSON.parse 成功後，才覆蓋正式檔案。
+ * 任何一步失敗都不會動到原本正式檔案的內容（驗證失敗會拋出例外，呼叫端需接住）。
+ */
+function safeWriteJson(targetPath: string, data: unknown): void {
+  const tmpPath = `${targetPath}.tmp`;
+  const content = JSON.stringify(data);
+
+  fs.writeFileSync(tmpPath, content, 'utf-8');
+
+  // 驗證：重新讀回並解析，確保沒有寫入不完整或損毀的內容
+  const verifyContent = fs.readFileSync(tmpPath, 'utf-8');
+  JSON.parse(verifyContent); // 解析失敗會直接拋出例外，中止寫入
+
+  fs.renameSync(tmpPath, targetPath);
+}
+
+// ============ 主流程 ============
 
 async function main() {
   console.log('================================================================');
@@ -108,101 +281,112 @@ async function main() {
   }
 
   const masterList: EtfMasterItem[] = JSON.parse(fs.readFileSync(masterPath, 'utf-8'));
-  let timeSeries: Record<string, RawCompactRecord[]> = {};
+  const masterByCode = new Map(masterList.map((item) => [item.code, item]));
 
+  let timeSeries: Record<string, RawCompactRecord[]> = {};
   if (fs.existsSync(seriesPath)) {
-    timeSeries = JSON.parse(fs.readFileSync(seriesPath, 'utf-8'));
+    try {
+      timeSeries = JSON.parse(fs.readFileSync(seriesPath, 'utf-8'));
+    } catch (e: any) {
+      console.error(
+        `⚠️ 既有 compactRecords.json 無法解析（${e.message}），本次以空白資料重新建立`
+      );
+      timeSeries = {};
+    }
   }
 
-  console.log(`📊 載入母表共 ${masterList.length} 檔 ETF，開始同步真實行情與籌碼...`);
+  // 1. 抓取並解析當日全體 ETF 資料
+  const etfRecords = await fetchAllEtfData();
 
-  // 1. 批量預先抓取 TWSE 全市場今日行情 (單次請求獲取全部)
-  const twseQuotes = await fetchTwseAllQuotes();
+  if (etfRecords.length === 0) {
+    console.error('❌ 本次未取得任何有效 ETF 資料，中止寫入，保留既有檔案不變');
+    process.exit(1);
+  }
 
-  let successCount = 0;
-  let newRecordsAdded = 0;
+  // 2. 逐筆更新時間序列與母表
+  let updatedCount = 0;
+  let newCodeCount = 0;
+  const newCodesFound: string[] = [];
+  const foreignFlagMismatches: string[] = [];
 
-  for (let i = 0; i < masterList.length; i++) {
-    const etf = masterList[i];
-    const code = etf.code;
-    process.stdout.write(`[${i + 1}/${masterList.length}] 同步 ${code} (${etf.name})... `);
+  for (const rec of etfRecords) {
+    const existingRecords = timeSeries[rec.code] || [];
+    const recordMap = new Map<string, RawCompactRecord>(
+      existingRecords.map((r) => [r[0], r])
+    );
 
-    try {
-      const existingRecords = timeSeries[code] || [];
-      const recordMap = new Map<string, RawCompactRecord>(
-        existingRecords.map((r) => [r[0], r])
-      );
+    recordMap.set(rec.date, [
+      rec.date,
+      rec.outstandingUnits,
+      rec.nav,
+      rec.price,
+      rec.unitDiff,
+      rec.estAmount,
+    ]);
 
-      let closePrice = etf.currentPrice;
-      let targetDate = new Date().toISOString().slice(0, 10);
+    timeSeries[rec.code] = Array.from(recordMap.values()).sort((a, b) =>
+      b[0].localeCompare(a[0])
+    );
 
-      // 優先從 TWSE 批量資料獲取
-      if (twseQuotes.has(code)) {
-        closePrice = twseQuotes.get(code)!;
-      } else {
-        // 備援從 Yahoo Finance 獲取
-        const yQuote = await fetchYahooQuote(code, etf.market);
-        if (yQuote && yQuote.close > 0) {
-          closePrice = yQuote.close;
-          targetDate = yQuote.date;
-        }
+    // 3. 同步母表現值
+    let masterItem = masterByCode.get(rec.code);
+    if (!masterItem) {
+      // 母表沒有的新代碼：先建立最基本的一筆，分類標記為「待人工確認」
+      masterItem = {
+        code: rec.code,
+        name: rec.name,
+        hasForeignHolding: rec.hasForeignHolding,
+        category: '待分類',
+      };
+      masterList.push(masterItem);
+      masterByCode.set(rec.code, masterItem);
+      newCodeCount++;
+      newCodesFound.push(`${rec.code} ${rec.name}`);
+    } else {
+      // 既有代碼：比對自動判斷的海外標記跟人工維護的紀錄是否一致，
+      // 不一致只警告、不覆蓋人工維護的結果，避免自動判斷的例外情況蓋掉正確分類
+      if (masterItem.hasForeignHolding !== rec.hasForeignHolding) {
+        foreignFlagMismatches.push(
+          `${rec.code} ${rec.name}：母表記錄為${masterItem.hasForeignHolding ? '海外' : '國內'}，` +
+            `但今日 k="${rec.productType}" 自動判斷為${rec.hasForeignHolding ? '海外' : '國內'}`
+        );
       }
-
-      const prevUnits = existingRecords.length > 0 ? existingRecords[0][1] : etf.currentUnits;
-      const nav = +(closePrice * 0.999).toFixed(2);
-
-      if (recordMap.has(targetDate)) {
-        const old = recordMap.get(targetDate)!;
-        old[2] = nav;
-        old[3] = closePrice;
-      } else {
-        // 若當日已有成交收盤價，計算當日申贖金額
-        const unitDiff = 0; // 當日單位數待次日公開更新
-        const estAmount = 0;
-
-        recordMap.set(targetDate, [
-          targetDate,
-          prevUnits,
-          nav,
-          closePrice,
-          unitDiff,
-          estAmount,
-        ]);
-        newRecordsAdded++;
-      }
-
-      // 按日期排序 (由新到舊)
-      const updatedList = Array.from(recordMap.values()).sort(
-        (a, b) => b[0].localeCompare(a[0])
-      );
-
-      timeSeries[code] = updatedList;
-
-      // 更新母表即時數據
-      if (updatedList.length > 0) {
-        const latest = updatedList[0];
-        etf.currentPrice = latest[3];
-        etf.currentNav = latest[2];
-        etf.currentUnits = latest[1];
-        etf.marketCap = +((etf.currentUnits * 1000 * etf.currentPrice) / 100000000).toFixed(1);
-      }
-
-      successCount++;
-      console.log(`✓ 成功 (最新日: ${updatedList[0]?.[0]}, 市價: ${etf.currentPrice})`);
-    } catch (err: any) {
-      console.log(`⚠️ 略過: ${err.message}`);
     }
 
-    await new Promise((r) => setTimeout(r, 50));
+    masterItem.currentPrice = rec.price;
+    masterItem.currentNav = rec.nav;
+    masterItem.currentUnits = rec.outstandingUnits;
+    if (rec.price > 0) {
+      masterItem.marketCap = +((rec.outstandingUnits * rec.price) / 100000000).toFixed(1);
+    }
+
+    updatedCount++;
   }
 
-  // 寫入儲存
-  fs.writeFileSync(seriesPath, JSON.stringify(timeSeries));
-  fs.writeFileSync(masterPath, JSON.stringify(masterList, null, 2));
+  // 4. 安全寫檔（先驗證再覆蓋，絕不留下半殘檔案）
+  try {
+    safeWriteJson(seriesPath, timeSeries);
+    safeWriteJson(masterPath, masterList);
+  } catch (e: any) {
+    console.error(`❌ 寫入檔案時驗證失敗，本次未覆蓋任何正式檔案：${e.message}`);
+    process.exit(1);
+  }
 
   console.log('================================================================');
-  console.log(`✅ 同步完成！共成功同步 ${successCount} 檔 ETF。新增/更新交易日紀錄: ${newRecordsAdded} 筆。`);
-  console.log(`💾 資料已完整持久化至:`);
+  console.log(`✅ 同步完成！共更新 ${updatedCount} 檔 ETF 的今日資料。`);
+  if (newCodeCount > 0) {
+    console.log(
+      `🆕 發現 ${newCodeCount} 檔母表中沒有的新代碼，已標記為「待分類」，請人工確認分類：`
+    );
+    newCodesFound.forEach((line) => console.log(`   - ${line}`));
+  }
+  if (foreignFlagMismatches.length > 0) {
+    console.log(
+      `⚠️ 發現 ${foreignFlagMismatches.length} 檔海內外分類與今日自動判斷不一致，請人工複核：`
+    );
+    foreignFlagMismatches.forEach((line) => console.log(`   - ${line}`));
+  }
+  console.log(`💾 資料已寫入:`);
   console.log(`   - ${seriesPath}`);
   console.log(`   - ${masterPath}`);
   console.log('================================================================');
