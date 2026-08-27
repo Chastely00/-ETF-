@@ -139,6 +139,35 @@ function formatDate(raw: unknown): string | null {
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
+// 常見海外市場關鍵字，用於純數字代碼（無法用字尾判斷）時輔助分類
+const FOREIGN_KEYWORDS = [
+  'NASDAQ', 'S&P', '那斯達克', '標普', '日本', '中國', 'A股', '印度',
+  '歐洲', '美國', '全球', '越南', '韓國', 'KOSPI', '東證', '費城',
+  '道瓊', 'FANG', '不動產', 'REITs', '澳洲', '香港',
+];
+
+/**
+ * 依代碼字尾與名稱關鍵字推斷分類（台灣 ETF 代碼字尾慣例相當一致）：
+ *   B -> 債券型、L -> 正向槓桿、R -> 反向型、A/D -> 主動型、T -> 平衡型
+ * 純數字代碼則退而求其次用名稱關鍵字判斷；都判斷不出來則回傳「待分類」，
+ * 讓使用者事後在 etf_master.json 人工確認，不強行亂猜。
+ */
+function inferCategory(code: string, name: string): string {
+  const suffixMatch = code.match(/[A-Z]+$/);
+  const suffix = suffixMatch ? suffixMatch[0] : '';
+
+  if (suffix === 'B') return '債券型';
+  if (suffix === 'L') return '正向槓桿';
+  if (suffix === 'R') return '反向型';
+  if (suffix === 'A' || suffix === 'D') return '主動型';
+  if (suffix === 'T') return '平衡型';
+
+  if (name.includes('高股息') || name.includes('高息')) return '高股息';
+  if (FOREIGN_KEYWORDS.some((k) => name.includes(k))) return '海外股票';
+
+  return '待分類';
+}
+
 /**
  * 解析單一 ETF 原始資料，任何必要欄位異常則回傳 null（呼叫端負責記錄並跳過）。
  * 絕不拋出例外中斷整批處理。
@@ -373,12 +402,12 @@ async function main() {
     // 3. 同步母表現值
     let masterItem = masterByCode.get(rec.code);
     if (!masterItem) {
-      // 母表沒有的新代碼：先建立最基本的一筆，分類標記為「待人工確認」
+      // 母表沒有的新代碼：先建立最基本的一筆，用代碼字尾/名稱關鍵字自動推斷分類
       masterItem = {
         code: rec.code,
         name: rec.name,
         hasForeignHolding: rec.hasForeignHolding,
-        category: '待分類',
+        category: inferCategory(rec.code, rec.name),
       };
       masterList.push(masterItem);
       masterByCode.set(rec.code, masterItem);
