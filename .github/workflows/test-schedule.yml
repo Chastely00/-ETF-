@@ -1,0 +1,12 @@
+name: Test Schedule
+
+on:
+  schedule:
+    - cron: "05 * * * *"  # 每小時的 05 分執行（UTC）
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Schedule is working"
