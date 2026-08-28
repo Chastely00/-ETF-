@@ -130,7 +130,7 @@ export default function App() {
     ).length;
   }, [startDate, endDate]);
 
-  // 計算區間統計數據
+  // 目前選取標的之匯總統計（供指標卡片、圓餅圖、趨勢圖專屬計算）
   const summary: AggregateRangeSummary = useMemo(() => {
     return calculateRangeSummary(
       startDate,
@@ -139,6 +139,16 @@ export default function App() {
       includeForeign
     );
   }, [startDate, endDate, selectedCodes, includeForeign]);
+
+  // 全市場所有有效 ETF 的區間統計（供排行榜表格、即時搜尋、分類篩選完整使用）
+  const allSummaryItems: RangeSummaryItem[] = useMemo(() => {
+    return calculateRangeSummary(
+      startDate,
+      endDate,
+      allFilteredEtfs.map((e) => e.code),
+      includeForeign
+    ).items;
+  }, [startDate, endDate, allFilteredEtfs, includeForeign]);
 
   // 匯出 CSV 報表
   const handleExportCsv = () => {
@@ -250,12 +260,22 @@ export default function App() {
 
         {/* Row 5: Detailed Data Ranking Table (處置王 & 籌碼小宇風格) */}
         <EtfTable
-          items={summary.items}
+          items={allSummaryItems}
           allFilteredEtfs={allFilteredEtfs}
           selectedCodes={selectedCodes}
           onToggleSelect={handleToggleSelect}
           onSelectEtfModal={(item) => setSelectedDetailItem(item)}
           searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onSelectMultiple={(codes) => {
+            setSelectedCodes((prev) => Array.from(new Set([...prev, ...codes])));
+            setCurrentPreset('custom');
+          }}
+          onDeselectMultiple={(codes) => {
+            const codeSet = new Set(codes);
+            setSelectedCodes((prev) => prev.filter((c) => !codeSet.has(c)));
+            setCurrentPreset('custom');
+          }}
         />
       </main>
 
