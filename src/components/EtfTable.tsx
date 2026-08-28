@@ -9,6 +9,9 @@ import {
   Square,
   Globe,
   SlidersHorizontal,
+  Search,
+  CheckCheck,
+  XSquare,
 } from 'lucide-react';
 import { EtfMaster, RangeSummaryItem } from '../types';
 import { formatAmount, formatUnits } from '../utils/calculator';
@@ -20,6 +23,9 @@ interface EtfTableProps {
   onToggleSelect: (code: string) => void;
   onSelectEtfModal: (item: RangeSummaryItem) => void;
   searchQuery: string;
+  onSearchChange?: (q: string) => void;
+  onSelectMultiple?: (codes: string[]) => void;
+  onDeselectMultiple?: (codes: string[]) => void;
 }
 
 type SortField =
@@ -39,11 +45,15 @@ export const EtfTable: React.FC<EtfTableProps> = ({
   onToggleSelect,
   onSelectEtfModal,
   searchQuery,
+  onSearchChange,
+  onSelectMultiple,
+  onDeselectMultiple,
 }) => {
   const [sortField, setSortField] = useState<SortField>('estAmount');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [marketFilter, setMarketFilter] = useState<string>('all');
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'selected'>('all');
 
   const categories = [
     'all',
@@ -68,6 +78,10 @@ export const EtfTable: React.FC<EtfTableProps> = ({
   };
 
   const filteredItems = items.filter((item) => {
+    // 選取範圍過濾 (若有搜尋字串時，優先全域搜尋)
+    if (!searchQuery.trim() && scopeFilter === 'selected' && !selectedCodes.includes(item.etf.code)) {
+      return false;
+    }
     // 類別過濾
     if (categoryFilter !== 'all' && (item.etf.category || '其他') !== categoryFilter) {
       return false;
@@ -76,22 +90,21 @@ export const EtfTable: React.FC<EtfTableProps> = ({
     if (marketFilter !== 'all' && (item.etf.market || 'TWSE') !== marketFilter) {
       return false;
     }
-    // 關鍵字過濾
+    // 關鍵字過濾 (支援多關鍵字以空白分隔、不分大小寫、代號/名稱/全名/發行商/追蹤指數/類別)
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
+      const terms = searchQuery.toLowerCase().trim().split(/\s+/);
       const code = (item.etf.code || '').toLowerCase();
       const name = (item.etf.name || '').toLowerCase();
       const fullName = (item.etf.fullName || '').toLowerCase();
       const issuer = (item.etf.issuer || '').toLowerCase();
+      const category = (item.etf.category || '').toLowerCase();
       const trackingIndex = (item.etf.trackingIndex || '').toLowerCase();
+      const combinedText = `${code} ${name} ${fullName} ${issuer} ${category} ${trackingIndex}`;
 
-      return (
-        code.includes(q) ||
-        name.includes(q) ||
-        fullName.includes(q) ||
-        issuer.includes(q) ||
-        trackingIndex.includes(q)
-      );
+      const matchesAllTerms = terms.every((term) => combinedText.includes(term));
+      if (!matchesAllTerms) {
+        return false;
+      }
     }
     return true;
   });
@@ -133,30 +146,101 @@ export const EtfTable: React.FC<EtfTableProps> = ({
     );
   };
 
+  const handleSelectAllFiltered = () => {
+    if (onSelectMultiple) {
+      onSelectMultiple(sortedItems.map((item) => item.etf.code));
+    }
+  };
+
+  const handleDeselectAllFiltered = () => {
+    if (onDeselectMultiple) {
+      onDeselectMultiple(sortedItems.map((item) => item.etf.code));
+    }
+  };
+
   return (
     <div
       id="etf-data-table-container"
       className="rounded-xl bg-[#1c1c1c] p-4 sm:p-5 border border-[#242424] space-y-4 shadow-sm"
     >
       {/* Table Top Controls & Filter Pills */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#242424] pb-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#00f6ff]">
-              VOLUME LEADERBOARD
-            </span>
-            <span className="text-xs text-[#666666]">|</span>
-            <h2 className="text-xs sm:text-sm font-bold text-[#f0f0f0]">
-              個股申贖估算籌碼排行榜
-            </h2>
+      <div className="flex flex-col gap-3 border-b border-[#242424] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#00f6ff]">
+                VOLUME LEADERBOARD
+              </span>
+              <span className="text-xs text-[#666666]">|</span>
+              <h2 className="text-xs sm:text-sm font-bold text-[#f0f0f0]">
+                個股申贖估算籌碼排行榜
+              </h2>
+            </div>
+            <p className="text-[11px] text-[#a0a0a0] mt-0.5">
+              共顯示 <strong className="text-[#00f6ff] font-mono">{sortedItems.length}</strong> 檔標的
+              {searchQuery && (
+                <span className="ml-1 text-[#00f6ff]">
+                  (關鍵字「{searchQuery}」搜尋結果)
+                </span>
+              )}
+              {' · '}點擊欄位標題可即時排序
+            </p>
           </div>
-          <p className="text-[11px] text-[#a0a0a0]">
-            共顯示 {sortedItems.length} 檔標的 (點擊欄位標題可即時排序)
-          </p>
+
+          {/* Quick Scope & Selection Actions */}
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            <div className="inline-flex rounded-lg bg-[#0a0a0a] p-0.5 border border-[#2a2a2a]">
+              <button
+                type="button"
+                onClick={() => setScopeFilter('all')}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  scopeFilter === 'all'
+                    ? 'bg-[#1f1f1f] text-[#00f6ff] font-semibold shadow-sm'
+                    : 'text-[#a0a0a0] hover:text-[#f0f0f0]'
+                }`}
+              >
+                全部市場標的
+              </button>
+              <button
+                type="button"
+                onClick={() => setScopeFilter('selected')}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  scopeFilter === 'selected'
+                    ? 'bg-[#1f1f1f] text-[#00f6ff] font-semibold shadow-sm'
+                    : 'text-[#a0a0a0] hover:text-[#f0f0f0]'
+                }`}
+              >
+                僅顯示已選取 ({selectedCodes.length})
+              </button>
+            </div>
+
+            {onSelectMultiple && sortedItems.length > 0 && (
+              <div className="flex items-center gap-1.5 ml-1">
+                <button
+                  type="button"
+                  onClick={handleSelectAllFiltered}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#0a0a0a] px-2 py-1 text-[11px] text-[#a0a0a0] border border-[#2a2a2a] hover:text-[#00f6ff] hover:border-[#00f6ff]/40 transition-colors"
+                  title="將目前列表的所有 ETF 加入選取比較"
+                >
+                  <CheckCheck className="h-3 w-3 text-[#00f6ff]" />
+                  全選目前列表
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeselectAllFiltered}
+                  className="inline-flex items-center gap-1 rounded-md bg-[#0a0a0a] px-2 py-1 text-[11px] text-[#a0a0a0] border border-[#2a2a2a] hover:text-[#ff6b5b] hover:border-[#ff6b5b]/40 transition-colors"
+                  title="將目前列表的所有 ETF 取消選取"
+                >
+                  <XSquare className="h-3 w-3 text-[#ff6b5b]" />
+                  取消選取
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Category Pills Filter */}
-        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
+        {/* Category & Market Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pt-1">
           {categories.map((cat) => (
             <button
               key={cat}
