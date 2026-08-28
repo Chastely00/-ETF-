@@ -152,33 +152,42 @@ export const QuickFilterBar: React.FC<QuickFilterBarProps> = ({
 
       {/* Filter and Search Bar row */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-80">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#a0a0a0]" />
           <input
             id="etf-search-input"
             type="text"
-            placeholder="搜尋代號或名稱 (如 0050, 美債...)"
+            placeholder="全市場即時搜尋 (如 0050, 00940, 美債, 高股息...)"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full rounded-lg bg-[#0a0a0a] py-1.5 pl-8 pr-3 text-xs text-[#f0f0f0] placeholder-[#555555] border border-[#2a2a2a] focus:border-[#00f6ff]/60 focus:outline-none transition-colors"
+            className="w-full rounded-lg bg-[#0a0a0a] py-1.5 pl-8 pr-7 text-xs text-[#f0f0f0] placeholder-[#555555] border border-[#2a2a2a] focus:border-[#00f6ff]/60 focus:outline-none transition-colors"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => onSearchChange('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-[#a0a0a0] hover:text-[#f0f0f0]"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#a0a0a0] hover:text-[#f0f0f0] bg-[#1f1f1f] rounded-full h-4 w-4 flex items-center justify-center"
+              title="清除搜尋"
             >
               ✕
             </button>
           )}
         </div>
 
-        {currentPreset === 'custom' && (
-          <div className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-2.5 py-1 text-xs text-[#00f6ff] border border-[#00f6ff]/30">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#00f6ff] animate-ping" />
-            <span className="text-[11px] font-mono">自訂個別勾選模式</span>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {searchQuery && (
+            <span className="text-[11px] text-[#00f6ff] bg-[#00f6ff]/10 px-2 py-0.5 rounded border border-[#00f6ff]/20">
+              搜尋中：「{searchQuery}」
+            </span>
+          )}
+
+          {currentPreset === 'custom' && (
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-[#0a0a0a] px-2.5 py-1 text-xs text-[#00f6ff] border border-[#00f6ff]/30">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#00f6ff] animate-ping" />
+              <span className="text-[11px] font-mono">自訂個別勾選模式</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
