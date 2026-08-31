@@ -267,7 +267,7 @@ export function formatUnits(
     const inWan = unitsInThousand ; // 萬張
     return `${sign}${inWan.toLocaleString('zh-TW', {
       maximumFractionDigits: 1,
-    })} 股;
+    })} 股`;
   }
 
   return `${sign}${unitsInThousand.toLocaleString('zh-TW')} 股`;
