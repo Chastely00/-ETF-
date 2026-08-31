@@ -3,7 +3,7 @@ name: Daily ETF Data Sync
 on:
   schedule:
     # 台灣時間每天 07:03 = UTC 23:03
-    - cron: "52 13 * * *"
+    - cron: "12 21 * * *"
   workflow_dispatch:
 
 permissions:
