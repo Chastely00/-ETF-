@@ -139,20 +139,19 @@ function formatDate(raw: unknown): string | null {
   return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
 }
 
-// 常見海外市場關鍵字，用於純數字代碼（無法用字尾判斷）時輔助分類
-const FOREIGN_KEYWORDS = [
-  'NASDAQ', 'S&P', '那斯達克', '標普', '日本', '中國', 'A股', '印度',
-  '歐洲', '美國', '全球', '越南', '韓國', 'KOSPI', '東證', '費城',
-  '道瓊', 'FANG', '不動產', 'REITs', '澳洲', '香港',
-];
-
 /**
- * 依代碼字尾與名稱關鍵字推斷分類（台灣 ETF 代碼字尾慣例相當一致）：
- *   B -> 債券型、L -> 正向槓桿、R -> 反向型、A/D -> 主動型、T -> 平衡型
- * 純數字代碼則退而求其次用名稱關鍵字判斷；都判斷不出來則回傳「待分類」，
- * 讓使用者事後在 etf_master.json 人工確認，不強行亂猜。
+ * 依代碼字尾與名稱關鍵字推斷分類。優先順序（不會再產生「待分類」）：
+ *   1. 代碼字尾（最精準、不可被名稱關鍵字覆蓋）：
+ *        B -> 債券型、L -> 正向槓桿、R -> 反向型、A/D -> 主動型、T -> 平衡型
+ *   2. 名稱含「債」-> 債券型
+ *   3. 名稱含「息」或「殖」-> 高股息
+ *   4. hasForeignHolding 為 true -> 海外股票
+ *   5. 其餘一律 -> 市值型
+ *
+ * 注意：2、3 兩點刻意排在第 4 點（海外判斷）之前，因為資料中大量存在
+ * 「海外＋高股息」的基金（如中信亞太高股息），要優先歸類為高股息而非海外股票。
  */
-function inferCategory(code: string, name: string): string {
+function inferCategory(code: string, name: string, hasForeignHolding: boolean): string {
   const suffixMatch = code.match(/[A-Z]+$/);
   const suffix = suffixMatch ? suffixMatch[0] : '';
 
@@ -162,10 +161,11 @@ function inferCategory(code: string, name: string): string {
   if (suffix === 'A' || suffix === 'D') return '主動型';
   if (suffix === 'T') return '平衡型';
 
-  if (name.includes('高股息') || name.includes('高息')) return '高股息';
-  if (FOREIGN_KEYWORDS.some((k) => name.includes(k))) return '海外股票';
+  if (name.includes('債')) return '債券型';
+  if (name.includes('息') || name.includes('殖')) return '高股息';
+  if (hasForeignHolding) return '海外股票';
 
-  return '待分類';
+  return '市值型';
 }
 
 /**
@@ -344,6 +344,7 @@ async function main() {
   const newCodesFound: string[] = [];
   const foreignFlagMismatches: string[] = [];
   const splitEventsDetected: string[] = [];
+  const nameCorrections: string[] = [];
 
   for (const rec of etfRecords) {
     const existingRecords = timeSeries[rec.code] || [];
@@ -407,14 +408,21 @@ async function main() {
         code: rec.code,
         name: rec.name,
         hasForeignHolding: rec.hasForeignHolding,
-        category: inferCategory(rec.code, rec.name),
+        category: inferCategory(rec.code, rec.name, rec.hasForeignHolding),
       };
       masterList.push(masterItem);
       masterByCode.set(rec.code, masterItem);
       newCodeCount++;
       newCodesFound.push(`${rec.code} ${rec.name}`);
     } else {
-      // 既有代碼：比對自動判斷的海外標記跟人工維護的紀錄是否一致，
+      // 既有代碼：以 TWSE 官方回傳的名稱為唯一真實來源，每次執行都同步校正，
+      // 避免舊資料（例如先前錯誤的代碼/名稱對應）永遠卡在錯誤狀態不會自我修正
+      if (masterItem.name !== rec.name) {
+        nameCorrections.push(`${rec.code}：「${masterItem.name}」-> 「${rec.name}」`);
+        masterItem.name = rec.name;
+      }
+
+      // 比對自動判斷的海外標記跟人工維護的紀錄是否一致，
       // 不一致只警告、不覆蓋人工維護的結果，避免自動判斷的例外情況蓋掉正確分類
       if (masterItem.hasForeignHolding !== rec.hasForeignHolding) {
         foreignFlagMismatches.push(
@@ -447,9 +455,15 @@ async function main() {
   console.log(`✅ 同步完成！共更新 ${updatedCount} 檔 ETF 的今日資料。`);
   if (newCodeCount > 0) {
     console.log(
-      `🆕 發現 ${newCodeCount} 檔母表中沒有的新代碼，已標記為「待分類」，請人工確認分類：`
+      `🆕 發現 ${newCodeCount} 檔母表中沒有的新代碼，已自動分類（建議人工複核）：`
     );
     newCodesFound.forEach((line) => console.log(`   - ${line}`));
+  }
+  if (nameCorrections.length > 0) {
+    console.log(
+      `📝 依 TWSE 官方資料校正 ${nameCorrections.length} 檔既有代碼的名稱（原資料可能有誤）：`
+    );
+    nameCorrections.forEach((line) => console.log(`   - ${line}`));
   }
   if (foreignFlagMismatches.length > 0) {
     console.log(
