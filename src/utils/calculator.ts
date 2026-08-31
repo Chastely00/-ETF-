@@ -270,7 +270,7 @@ export function formatUnits(
     })} 股`;
   }
   const inTho = unitsInThousand / 1000; // 張
-  return `${sign}${inWan.toLocaleString('zh-TW', {
+  return `${sign}${inTho.toLocaleString('zh-TW', {
       maximumFractionDigits: 1,
     })} 股`;
 }
