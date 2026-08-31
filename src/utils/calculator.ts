@@ -264,13 +264,13 @@ export function formatUnits(
   const abs = Math.abs(unitsInThousand);
 
   if (abs >= 10000) {
-    const inWan = unitsInThousand / 10; // 萬張
+    const inWan = unitsInThousand ; // 萬張
     return `${sign}${inWan.toLocaleString('zh-TW', {
       maximumFractionDigits: 1,
     })} 股;
   }
 
-  return `${sign}${unitsInThousand.toLocaleString('zh-TW')} 張`;
+  return `${sign}${unitsInThousand.toLocaleString('zh-TW')} 股`;
 }
 
 /**
