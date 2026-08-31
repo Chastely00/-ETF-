@@ -269,7 +269,6 @@ export function formatUnits(
       maximumFractionDigits: 1,
     })} 股`;
   }
-
   return `${sign}${unitsInThousand.toLocaleString('zh-TW')} 股`;
 }
 
