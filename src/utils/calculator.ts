@@ -263,16 +263,10 @@ export function formatUnits(
   const sign = showPlusSign && unitsInThousand > 0 ? '+' : '';
   const abs = Math.abs(unitsInThousand);
   
-  if (abs >= 10000) {
-    const inWan = unitsInThousand / 1000; // 張
-    return `${sign}${inWan.toLocaleString('zh-TW', {
-      maximumFractionDigits: 1,
-    })} 股`;
-  }
   const inTho = unitsInThousand / 1000; // 張
   return `${sign}${inTho.toLocaleString('zh-TW', {
       maximumFractionDigits: 1,
-    })} 股`;
+    })} 張`;
 }
 
 /**
